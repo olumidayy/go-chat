@@ -75,8 +75,7 @@ func (c *Client) Read() {
 			data = MessageData{Name: "Anagrams", Text: "Game started. It'll end in 1 minute."}
 			c.Pool.Broadcast <- Message{Type: messageType, Body: data}
 			c.Pool.GameInSession = true
-			c.Pool.Broadcast <- Message{Type: messageType, Body: data}
-			c.Pool.StartGame <- true
+			go CountDown(c)
 		}
 	}
 }
@@ -85,9 +84,9 @@ func CountDown(c *Client) {
 	fmt.Println("TIMER STARTED!", time.Now())
 	time.AfterFunc(1 * time.Minute, func() {
 		fmt.Println("TIMER EXPIRED!", time.Now())
-		// for i := range c.Pool.AddData {
-		// 	fmt.Println(i)
-		// }
+		for i := range c.Pool.AddData {
+			fmt.Println(i)
+		}
 		c.Pool.GameInSession = false
 	})
 }

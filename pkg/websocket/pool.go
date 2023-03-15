@@ -2,7 +2,6 @@ package websocket
 
 import (
 	"fmt"
-	"time"
 )
 
 type Pool struct {
@@ -11,7 +10,6 @@ type Pool struct {
 	Clients    map[*Client]bool
 	Broadcast  chan Message
 	AddData  chan MessageData
-	StartGame chan bool
 	GameInSession  bool
 }
 
@@ -22,7 +20,6 @@ func NewPool() *Pool {
 		Clients:    make(map[*Client]bool),
 		Broadcast:  make(chan Message),
 		AddData:  make(chan MessageData),
-		StartGame:  make(chan bool),
 		GameInSession: false,
 	}
 }
@@ -53,16 +50,6 @@ func (pool *Pool) Start() {
 					fmt.Println(err)
 					return
 				}
-			}
-		case val := <-pool.StartGame:
-			fmt.Println("A game is starting")
-			for client := range pool.Clients {
-				fmt.Println(client)
-				if !val { client.Pool.GameInSession = val; return }
-				go time.AfterFunc(10 * time.Second, func() {
-					client.Pool.GameInSession = val
-				})
-				continue
 			}
 		}
 	}

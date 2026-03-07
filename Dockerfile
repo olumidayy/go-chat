@@ -1,16 +1,35 @@
-# We'll choose the incredibly lightweight
-# Go alpine image to work with
-FROM golang:1.11.1 AS builder
+# Start from the latest golang base image
+FROM golang:1.21-alpine as builder
 
-# We want to build and run
-# our application's binary executable
-RUN mkdir /app
-ADD . /app
+# Add Maintainer Info
+LABEL maintainer="Olumide <olumide@example.com>"
+
+# Set the Current Working Directory inside the container
 WORKDIR /app
-RUN CGO_ENABLED=0 GOOS=linux go build -o main ./...
 
-# the lightweight scratch image we'll
-# run our application within
-FROM alpine:latest AS Production
-COPY --from=builder /app .
+# Copy go mod and sum files
+COPY go.mod go.sum ./
+
+# Download all dependencies. Dependencies will be cached if the go.mod and go.sum files are not changed
+RUN go mod download
+
+# Copy the source from the current directory to the Working Directory inside the container
+COPY . .
+
+# Build the Go app
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
+
+######## Start a new stage from scratch #######
+FROM alpine:latest  
+
+WORKDIR /root/
+
+# Copy the Pre-built binary file from the previous stage
+COPY --from=builder /app/main .
+COPY --from=builder /app/websockets.html .
+
+# Expose port 8080 to the outside world
+EXPOSE 8080
+
+# Command to run the executable
 CMD ["./main"]

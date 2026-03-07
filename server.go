@@ -4,28 +4,21 @@ import (
 	"fmt"
 	"net/http"
 
-	// "github.com/gorilla/websocket"
-	"websocket"
+	"github.com/olumidayy/go-websockets/pkg/websocket"
 )
-
-type WebSocketData struct {
-	Name string `json:"name"`
-	Text string `json:"text"`
-}
 
 func serveWs(pool *websocket.Pool, w http.ResponseWriter, r *http.Request) {
 	fmt.Println("WebSocket Endpoint Hit")
 	conn, err := websocket.Upgrade(w, r)
 	if err != nil {
 		fmt.Fprintf(w, "%+v\n", err)
+		return
 	}
 
-	client := &websocket.Client{
-		Conn: conn,
-		Pool: pool,
-	}
+	client := websocket.NewClient(conn, pool)
 
 	pool.Register <- client
+	go client.Write()
 	client.Read()
 }
 
@@ -45,5 +38,7 @@ func setupRoutes() {
 func main() {
 	fmt.Println("Distributed Chat App v0.01")
 	setupRoutes()
-	http.ListenAndServe(":8080", nil)
+	if err := http.ListenAndServe(":8080", nil); err != nil {
+		fmt.Println(err)
+	}
 }

@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jumble
+  labels:
+    app: jumble
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jumble
+  template:
+    metadata:
+      labels:
+        app: jumble
+    spec:
+      containers:
+        - name: jumble
+          image: REPLACE_WITH_DEPLOYMENT_IMAGE
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

@@ -1,0 +1,125 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'eu-west-1' }}
+  EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+  ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY || 'jumble' }}
+  APP_NAME: ${{ vars.APP_NAME || 'jumble' }}
+  K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'jumble' }}
+
+jobs:
+  deploy:
+    name: Build and Deploy to EKS
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required configuration
+        run: |
+          missing=0
+          if [ -z "$EKS_CLUSTER_NAME" ]; then
+            echo "::error::Repository variable EKS_CLUSTER_NAME is required."
+            missing=1
+          fi
+          if [ "$missing" -eq 1 ]; then
+            exit 1
+          fi
+
+      - name: Validate AWS authentication configuration
+        env:
+          AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          if [ -z "$AWS_ROLE_TO_ASSUME" ] && { [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; }; then
+            echo "::error::Set AWS_ROLE_TO_ASSUME (OIDC) or both AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY."
+            exit 1
+          fi
+
+      - name: Configure AWS credentials (OIDC role)
+        if: ${{ secrets.AWS_ROLE_TO_ASSUME != '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+
+      - name: Configure AWS credentials (access key fallback)
+        if: ${{ secrets.AWS_ROLE_TO_ASSUME == '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Ensure ECR repository exists
+        run: |
+          aws ecr describe-repositories --repository-names "$ECR_REPOSITORY" --region "$AWS_REGION" >/dev/null 2>&1 || \
+          aws ecr create-repository --repository-name "$ECR_REPOSITORY" --region "$AWS_REGION" \
+            --image-scanning-configuration scanOnPush=true \
+            --image-tag-mutability IMMUTABLE \
+            --encryption-configuration encryptionType=AES256
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image
+        id: build-image
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          image_tag="${GITHUB_SHA::12}"
+          image_uri="$REGISTRY/$ECR_REPOSITORY:$image_tag"
+
+          docker build -t "$image_uri" .
+          docker push "$image_uri"
+
+          echo "image_uri=$image_uri" >> "$GITHUB_OUTPUT"
+
+      - name: Configure kubectl for EKS
+        run: |
+          aws eks update-kubeconfig --name "$EKS_CLUSTER_NAME" --region "$AWS_REGION"
+
+      - name: Apply deployment and service
+        env:
+          IMAGE_URI: ${{ steps.build-image.outputs.image_uri }}
+        run: |
+          kubectl get namespace "$K8S_NAMESPACE" >/dev/null 2>&1 || kubectl create namespace "$K8S_NAMESPACE"
+
+          # Apply versioned Kubernetes manifests from the repository
+          # Expectation: manifests (Deployment, Service, etc.) live under ./k8s
+          kubectl apply -n "$K8S_NAMESPACE" -f k8s/
+
+          # Update the deployment to use the freshly built image
+          kubectl set image deployment/"$APP_NAME" "$APP_NAME"="$IMAGE_URI" -n "$K8S_NAMESPACE"
+
+          # Wait for rollout to complete
+          kubectl rollout status deployment/"$APP_NAME" -n "$K8S_NAMESPACE" --timeout=180s
+
+      - name: Apply ALB ingress (optional)
+        if: ${{ vars.DOMAIN_NAME != '' && vars.ACM_CERT_ARN != '' }}
+        env:
+          DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
+          ACM_CERT_ARN: ${{ vars.ACM_CERT_ARN }}
+        run: |
+          # Apply Ingress from a versioned manifest file, allowing env substitution
+          envsubst < k8s/ingress.yaml | kubectl apply -n "$K8S_NAMESPACE" -f -
+
+      - name: Show deployment resources
+        run: |
+          kubectl get deploy,svc,ing -n "$K8S_NAMESPACE"

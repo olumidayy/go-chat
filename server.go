@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"html"
 	"net"
 	"net/http"
 	"regexp"
@@ -125,8 +124,6 @@ func clientIP(r *http.Request) string {
 // ─── Input validation ───────────────────────────────────────
 func sanitizeName(name string) string {
 	name = strings.TrimSpace(name)
-	// Strip any HTML
-	name = html.UnescapeString(name)
 	name = strings.Map(func(r rune) rune {
 		if r < 32 || r == 127 { // strip control characters
 			return -1

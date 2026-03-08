@@ -90,10 +90,15 @@ type RoomInfo struct {
 
 func (rm *RoomManager) generateCodeLocked() string {
 	const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" // no I/O/0/1 to avoid confusion
+generate:
 	for {
 		code := make([]byte, roomCodeLen)
 		for i := range code {
-			n, _ := rand.Int(rand.Reader, big.NewInt(int64(len(alphabet))))
+			n, err := rand.Int(rand.Reader, big.NewInt(int64(len(alphabet))))
+			if err != nil {
+				fmt.Printf("failed to generate random room code: %v\n", err)
+				continue generate
+			}
 			code[i] = alphabet[n.Int64()]
 		}
 		codeStr := string(code)

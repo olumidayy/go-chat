@@ -116,16 +116,16 @@ func (c *Client) Read() {
 		message := Message{Type: messageType, Body: data}
 		c.Pool.Broadcast <- message
 
-		if strings.EqualFold(strings.TrimSpace(data.Text), "ANAGRAMS") {
+		if strings.EqualFold(strings.TrimSpace(data.Text), "JUMBLE") {
 			if round, started := c.Pool.StartGame(defaultGameDuration, data.Name); started {
 				letters := spacedLetters(round.Letters)
 				c.Pool.Broadcast <- Message{
 					Type: websocket.TextMessage,
-					Body: MessageData{Name: "Anagrams", Text: "Game started.\nRound ends in 1 minute.", Scores: round.Scores, Letters: letters, RoundState: roundStateActive},
+					Body: MessageData{Name: "Jumble", Text: "Game started.\nRound ends in 1 minute.", Scores: round.Scores, Letters: letters, RoundState: roundStateActive},
 				}
 				c.Pool.Broadcast <- Message{
 					Type: websocket.TextMessage,
-					Body: MessageData{Name: "Anagrams", Text: "Form words using some or all of these letters.", Scores: round.Scores, Letters: letters, RoundState: roundStateActive},
+					Body: MessageData{Name: "Jumble", Text: "Form words using some or all of these letters.", Scores: round.Scores, Letters: letters, RoundState: roundStateActive},
 				}
 			} else if c.Pool.IsGameInSession() {
 				// Game already running — nudge the player

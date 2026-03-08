@@ -84,7 +84,7 @@ func (pool *Pool) Start() {
 			if client.Name != "" {
 				members := pool.ActiveMembers()
 				joinMsg := MessageData{
-					Name:    "Anagrams",
+					Name:    "Jumble",
 					Text:    fmt.Sprintf("%s joined the room.", client.Name),
 					Members: members,
 				}
@@ -108,7 +108,7 @@ func (pool *Pool) Start() {
 				pool.mu.RLock()
 				if pool.GameInSession {
 					catchUp := MessageData{
-						Name:       "Anagrams",
+						Name:       "Jumble",
 						Text:       fmt.Sprintf("A round is in progress! Form words from the letters above."),
 						Scores:     pool.currentLeaderboardLocked(),
 						Letters:    pool.roundLettersLocked(),
@@ -135,7 +135,7 @@ func (pool *Pool) Start() {
 				if leftName != "" && len(pool.Clients) > 0 {
 					members := pool.ActiveMembers()
 					leaveMsg := MessageData{
-						Name:    "Anagrams",
+						Name:    "Jumble",
 						Text:    fmt.Sprintf("%s left the room.", leftName),
 						Members: members,
 					}
@@ -196,7 +196,7 @@ func (pool *Pool) CurrentRoundState() *MessageData {
 		return nil
 	}
 	msg := MessageData{
-		Name:       "Anagrams",
+		Name:       "Jumble",
 		Text:       "A round is already in progress! Keep guessing.",
 		Scores:     pool.currentLeaderboardLocked(),
 		Letters:    pool.roundLettersLocked(),
@@ -274,7 +274,7 @@ func (pool *Pool) HandleGuess(data MessageData) (MessageData, bool) {
 	pool.registerPlayerLocked(playerName)
 
 	guess := normalizeWord(data.Text)
-	if guess == "" || guess == "anagrams" {
+	if guess == "" || guess == "jumble" {
 		return MessageData{}, false
 	}
 
@@ -301,7 +301,7 @@ func (pool *Pool) HandleGuess(data MessageData) (MessageData, bool) {
 	leaderboard := pool.currentLeaderboardLocked()
 
 	return MessageData{
-		Name:       "Anagrams",
+		Name:       "Jumble",
 		Text:       fmt.Sprintf("%s found %s for %d Scrabble point%s.\nTotal: %d point%s across %d word%s.", winner, strings.ToUpper(guess), earnedPoints, pluralSuffix(earnedPoints), totalScore, pluralSuffix(totalScore), wordsFound, pluralSuffix(wordsFound)),
 		Scores:     leaderboard,
 		Letters:    pool.roundLettersLocked(),
@@ -344,7 +344,7 @@ func (pool *Pool) endGame() {
 	pool.Broadcast <- Message{
 		Type: websocket.TextMessage,
 		Body: MessageData{
-			Name:       "Anagrams",
+			Name:       "Jumble",
 			Text:       strings.Join(lines, "\n"),
 			Scores:     leaderboardEntries,
 			Letters:    letters,
@@ -363,7 +363,7 @@ func (pool *Pool) roundLettersLocked() string {
 
 func (pool *Pool) roundMessageLocked(text string) MessageData {
 	return MessageData{
-		Name:       "Anagrams",
+		Name:       "Jumble",
 		Text:       text,
 		Scores:     pool.currentLeaderboardLocked(),
 		Letters:    pool.roundLettersLocked(),

@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Anagrams — Word Rumble</title>
+  <title>Jumble — Word Rumble</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -14,7 +15,7 @@
 <div class="name-overlay" id="nameOverlay">
   <form class="name-card" id="nameForm">
     <div class="name-card-icon">&#9827;</div>
-    <h1 class="name-card-title">Anagrams</h1>
+    <h1 class="name-card-title">Jumble</h1>
     <p class="name-card-sub">Pick a name to enter the arena</p>
     <div class="name-input-wrap">
       <input type="text" id="nameInput" class="name-input" placeholder="Your name&hellip;" maxlength="24" autocomplete="off" spellcheck="false" autofocus pattern="[a-zA-Z0-9 _\-]+">
@@ -75,8 +76,11 @@
   <!-- Sidebar -->
   <aside class="sidebar">
     <div class="logo">
-      <span class="logo-icon">&#9827;</span>
-      <span class="logo-text">Anagrams</span>
+      <span class="logo-tiles">
+        <span class="logo-tile t1">J</span>
+        <span class="logo-tile t2">U</span>
+      </span>
+      <span class="logo-text">mble</span>
       <button class="theme-toggle" id="themeToggle" title="Toggle light/dark mode">
         <span class="theme-icon" id="themeIcon">&#127769;</span>
       </button>
@@ -107,7 +111,7 @@
       <div class="letter-bank" id="letterBank">
         <div class="letter-bank-empty">No active round</div>
       </div>
-      <div class="letter-hint" id="letterHint">Type <kbd>ANAGRAMS</kbd> to start a round.</div>
+      <div class="letter-hint" id="letterHint">Type <kbd>JUMBLE</kbd> to start a round.</div>
     </div>
 
     <div class="sidebar-section">
@@ -136,8 +140,8 @@
     <div class="chat-messages" id="chatMessages">
       <div class="welcome-card">
         <div class="welcome-icon">&#127918;</div>
-        <h2>Welcome to Anagrams!</h2>
-        <p>A multiplayer word game. Type <strong>ANAGRAMS</strong> to start a round, then form valid English words from the given letters.</p>
+        <h2>Welcome to Jumble!</h2>
+        <p>A multiplayer word game. Type <strong>JUMBLE</strong> to start a round, then form valid English words from the given letters.</p>
         <p class="welcome-sub">Scrabble scoring &middot; 1 minute per round &middot; No repeats</p>
         <div class="welcome-funfact" id="welcomeFunFact"></div>
       </div>
@@ -263,13 +267,67 @@ kbd {
 .logo {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
+  user-select: none;
 }
 
-.logo-icon {
-  font-size: 1.6em;
-  color: var(--accent);
-  filter: drop-shadow(0 0 8px rgba(167,139,250,.35));
+.logo-tiles {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.logo-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 5px;
+  background: var(--accent);
+  color: #fff;
+  font-family: 'Space Mono', monospace;
+  font-weight: 700;
+  font-size: 0.85em;
+  box-shadow: 0 2px 6px rgba(124,58,237,.35), inset 0 1px 0 rgba(255,255,255,.15);
+  transition: transform .3s cubic-bezier(.34,1.56,.64,1);
+}
+
+.logo-tile.t1 {
+  transform: rotate(-8deg);
+  animation: tileWobble1 3s ease-in-out infinite;
+}
+
+.logo-tile.t2 {
+  transform: rotate(5deg) translateY(-2px);
+  animation: tileWobble2 3.5s ease-in-out infinite;
+}
+
+@keyframes tileWobble1 {
+  0%, 100% { transform: rotate(-8deg) }
+  25% { transform: rotate(-5deg) translateY(-1px) }
+  50% { transform: rotate(-10deg) translateY(1px) }
+  75% { transform: rotate(-6deg) }
+}
+
+@keyframes tileWobble2 {
+  0%, 100% { transform: rotate(5deg) translateY(-2px) }
+  25% { transform: rotate(8deg) translateY(0) }
+  50% { transform: rotate(3deg) translateY(-3px) }
+  75% { transform: rotate(6deg) translateY(-1px) }
+}
+
+.logo:hover .logo-tile.t1 {
+  animation: tileFlip 0.5s ease forwards;
+}
+.logo:hover .logo-tile.t2 {
+  animation: tileFlip 0.5s ease 0.1s forwards;
+}
+
+@keyframes tileFlip {
+  0% { transform: rotateY(0) scale(1) }
+  50% { transform: rotateY(90deg) scale(1.1) }
+  100% { transform: rotateY(0) scale(1) }
 }
 
 .logo-text {
@@ -279,6 +337,7 @@ kbd {
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+  margin-left: -1px;
 }
 
 .sidebar-label {
@@ -1622,7 +1681,7 @@ var nameSubmitting = false;
 // Restore saved name
 (function() {
   var saved = null;
-  try { saved = localStorage.getItem("anagrams-name"); } catch(e) {}
+  try { saved = localStorage.getItem("jumble-name"); } catch(e) {}
   if (saved) {
     nameInput.value = saved;
     updateNamePreview();
@@ -1657,7 +1716,7 @@ nameForm.addEventListener("submit", function(e) {
     return;
   }
   PERSON_NAME = val;
-  try { localStorage.setItem("anagrams-name", PERSON_NAME); } catch(e) {}
+  try { localStorage.setItem("jumble-name", PERSON_NAME); } catch(e) {}
   showRoomOverlay();
 });
 
@@ -1806,7 +1865,7 @@ roomBackBtn.addEventListener("click", function() {
 });
 
 function enterApp() {
-  try { localStorage.setItem("anagrams-name", PERSON_NAME); } catch(e) {}
+  try { localStorage.setItem("jumble-name", PERSON_NAME); } catch(e) {}
 
   // Hide room overlay
   roomOverlay.classList.add("leaving");
@@ -1891,7 +1950,7 @@ function handleMessage(data) {
   if (data.letters) renderLetterBank(data.letters, data.roundState);
   if (Array.isArray(data.members)) renderMembers(data.members);
 
-  if (data.name === "Anagrams") {
+  if (data.name === "Jumble") {
     // Join / leave pills
     var joinMatch = data.text && data.text.match(/^(.+) joined the room\.$/);
     var leaveMatch = data.text && data.text.match(/^(.+) left the room\.$/);
@@ -1986,7 +2045,7 @@ function appendSystem(text, letters) {
   }
   var html = '<div class="msg-row system">'
     + '<div class="msg-body" style="width:100%">'
-    + '<div class="msg-meta"><span class="msg-name">Anagrams</span><span class="msg-time">' + timeStr() + '</span></div>'
+    + '<div class="msg-meta"><span class="msg-name">Jumble</span><span class="msg-time">' + timeStr() + '</span></div>'
     + '<div class="msg-bubble">' + escapeHTML(text) + letterChips + '</div>'
     + '</div></div>';
   chatMessages.insertAdjacentHTML("beforeend", html);
@@ -2019,7 +2078,7 @@ function renderLetterBank(letters, roundState) {
   }
   letterBank.innerHTML = tiles;
   letterHint.innerHTML = ended
-    ? 'Round over. Type <kbd>ANAGRAMS</kbd> for a new round.'
+    ? 'Round over. Type <kbd>JUMBLE</kbd> for a new round.'
     : 'Build words from these letters.';
 }
 
@@ -2085,7 +2144,7 @@ var themeIcon   = document.getElementById("themeIcon");
 function setTheme(theme) {
   document.documentElement.setAttribute("data-theme", theme);
   themeIcon.innerHTML = theme === "light" ? "\u{2600}\u{FE0F}" : "\u{1F319}";
-  try { localStorage.setItem("anagrams-theme", theme); } catch(e) {}
+  try { localStorage.setItem("jumble-theme", theme); } catch(e) {}
 }
 
 themeToggle.addEventListener("click", function() {
@@ -2096,7 +2155,7 @@ themeToggle.addEventListener("click", function() {
 // Restore saved theme
 (function() {
   var saved = null;
-  try { saved = localStorage.getItem("anagrams-theme"); } catch(e) {}
+  try { saved = localStorage.getItem("jumble-theme"); } catch(e) {}
   if (saved) setTheme(saved);
 })();
 

@@ -258,6 +258,11 @@ func setupRoutes() {
 	http.HandleFunc("/api/rooms/create", securityHeaders(handleCreateRoom))
 	http.HandleFunc("/api/rooms/", securityHeaders(handleGetRoom))
 
+	http.HandleFunc("/favicon.svg", securityHeaders(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		http.ServeFile(w, r, "favicon.svg")
+	}))
+
 	http.HandleFunc("/", securityHeaders(func(w http.ResponseWriter, r *http.Request) {
 		// Only serve the root path to avoid path traversal
 		if r.URL.Path != "/" {

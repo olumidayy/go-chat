@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"regexp"
@@ -212,7 +213,9 @@ func handleCreateRoom(w http.ResponseWriter, r *http.Request) {
 
 	code, _ := rm.CreateRoom()
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"code": code})
+	if err := json.NewEncoder(w).Encode(map[string]string{"code": code}); err != nil {
+		log.Println("encode error:", err)
+	}
 }
 
 func handleGetRoom(w http.ResponseWriter, r *http.Request) {
@@ -242,10 +245,12 @@ func handleGetRoom(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(websocket.RoomInfo{
+	if err := json.NewEncoder(w).Encode(websocket.RoomInfo{
 		Code:    strings.ToUpper(code),
 		Players: pool.ClientCount(),
-	})
+	}); err != nil {
+		log.Println("encode error:", err)
+	}
 }
 
 func setupRoutes() {

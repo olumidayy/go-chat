@@ -77,10 +77,12 @@ func (c *Client) Read() {
 	}()
 
 	// Set read deadline; extended by pong handler
-	c.Conn.SetReadDeadline(time.Now().Add(pongWait))
+	if err := c.Conn.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
+		log.Println("SetReadDeadline error:", err)
+		return
+	}
 	c.Conn.SetPongHandler(func(string) error {
-		c.Conn.SetReadDeadline(time.Now().Add(pongWait))
-		return nil
+		return c.Conn.SetReadDeadline(time.Now().Add(pongWait))
 	})
 
 	for {
@@ -153,8 +155,8 @@ func (c *Client) Write() {
 			if !ok {
 				// Channel closed — send close frame
 				c.mu.Lock()
-				c.Conn.SetWriteDeadline(time.Now().Add(writeWait))
-				c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
+				_ = c.Conn.SetWriteDeadline(time.Now().Add(writeWait))
+				_ = c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
 				c.mu.Unlock()
 				return
 			}
@@ -165,7 +167,7 @@ func (c *Client) Write() {
 		case <-ticker.C:
 			// Send ping to keep connection alive and detect dead clients
 			c.mu.Lock()
-			c.Conn.SetWriteDeadline(time.Now().Add(writeWait))
+			_ = c.Conn.SetWriteDeadline(time.Now().Add(writeWait))
 			err := c.Conn.WriteMessage(websocket.PingMessage, nil)
 			c.mu.Unlock()
 			if err != nil {

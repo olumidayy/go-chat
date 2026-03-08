@@ -116,7 +116,7 @@ func (pool *Pool) Start() {
 				if pool.GameInSession {
 					catchUp := MessageData{
 						Name:       "Jumble",
-						Text:       fmt.Sprintf("A round is in progress! Form words from the letters above."),
+						Text:       "A round is in progress! Form words from the letters above.",
 						Scores:     pool.currentLeaderboardLocked(),
 						Letters:    pool.roundLettersLocked(),
 						RoundState: roundStateActive,

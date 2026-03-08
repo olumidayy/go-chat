@@ -307,7 +307,9 @@ func TestCreateThenGetRoom_Integration(t *testing.T) {
 	}
 
 	var createResp map[string]string
-	json.NewDecoder(createRR.Body).Decode(&createResp)
+	if err := json.NewDecoder(createRR.Body).Decode(&createResp); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
 	code := createResp["code"]
 
 	getReq := httptest.NewRequest(http.MethodGet, "/api/rooms/"+code, nil)
@@ -320,7 +322,9 @@ func TestCreateThenGetRoom_Integration(t *testing.T) {
 	}
 
 	var info websocket.RoomInfo
-	json.NewDecoder(getRR.Body).Decode(&info)
+	if err := json.NewDecoder(getRR.Body).Decode(&info); err != nil {
+		t.Fatalf("decode get response: %v", err)
+	}
 	if info.Code != code {
 		t.Errorf("get: expected code %s, got %s", code, info.Code)
 	}

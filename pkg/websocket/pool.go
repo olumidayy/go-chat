@@ -69,7 +69,7 @@ func (pool *Pool) Start() {
 		case client := <-pool.Register:
 			// Enforce max clients per room
 			if len(pool.Clients) >= MaxClientsPerRoom {
-				client.Conn.Close()
+				_ = client.Conn.Close()
 				break
 			}
 			// Atomically check and reserve the name, then add to pool.Clients
@@ -78,7 +78,7 @@ func (pool *Pool) Start() {
 				if pool.activeNames[strings.ToLower(client.Name)] {
 					pool.mu.Unlock()
 					_ = client.Conn.WriteJSON(map[string]string{"error": "name_taken"})
-					client.Conn.Close()
+					_ = client.Conn.Close()
 					break
 				}
 				pool.activeNames[strings.ToLower(client.Name)] = true
@@ -176,7 +176,7 @@ func (pool *Pool) Start() {
 					log.Printf("pool %s: dropping slow client", pool.ID)
 					delete(pool.Clients, client)
 					close(client.Send)
-					client.Conn.Close()
+					_ = client.Conn.Close()
 				}
 			}
 		case data := <-pool.AddData:

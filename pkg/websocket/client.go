@@ -73,7 +73,7 @@ func sanitizeText(s string) string {
 func (c *Client) Read() {
 	defer func() {
 		c.Pool.Unregister <- c
-		c.Conn.Close()
+		_ = c.Conn.Close()
 	}()
 
 	// Set read deadline; extended by pong handler
@@ -146,7 +146,7 @@ func (c *Client) Write() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
 		ticker.Stop()
-		c.Conn.Close()
+		_ = c.Conn.Close()
 	}()
 
 	for {

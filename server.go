@@ -178,7 +178,7 @@ func serveWs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		_ = conn.WriteJSON(map[string]string{"error": "name_taken"})
-		conn.Close()
+		_ = conn.Close()
 		return
 	}
 

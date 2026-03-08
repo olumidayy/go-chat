@@ -2,7 +2,7 @@
 FROM golang:1.21-alpine as builder
 
 # Add Maintainer Info
-LABEL maintainer="Olumide <olumidenwosu@gmail.com>"
+LABEL org.opencontainers.image.authors="Olumide <olumidenwosu@gmail.com>"
 
 # Set the Current Working Directory inside the container
 WORKDIR /app

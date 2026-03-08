@@ -36,10 +36,6 @@ jobs:
             echo "::error::Repository variable EKS_CLUSTER_NAME is required."
             missing=1
           fi
-          if [ -z "$AWS_REGION" ]; then
-            echo "::error::Repository variable AWS_REGION is required."
-            missing=1
-          fi
           if [ "$missing" -eq 1 ]; then
             exit 1
           fi
@@ -73,7 +69,10 @@ jobs:
       - name: Ensure ECR repository exists
         run: |
           aws ecr describe-repositories --repository-names "$ECR_REPOSITORY" --region "$AWS_REGION" >/dev/null 2>&1 || \
-          aws ecr create-repository --repository-name "$ECR_REPOSITORY" --region "$AWS_REGION"
+          aws ecr create-repository --repository-name "$ECR_REPOSITORY" --region "$AWS_REGION" \
+            --image-scanning-configuration scanOnPush=true \
+            --image-tag-mutability IMMUTABLE \
+            --encryption-configuration encryptionType=AES256
 
       - name: Login to Amazon ECR
         id: login-ecr
@@ -102,65 +101,14 @@ jobs:
         run: |
           kubectl get namespace "$K8S_NAMESPACE" >/dev/null 2>&1 || kubectl create namespace "$K8S_NAMESPACE"
 
-          cat <<EOF | kubectl apply -f -
-          apiVersion: apps/v1
-          kind: Deployment
-          metadata:
-            name: ${APP_NAME}
-            namespace: ${K8S_NAMESPACE}
-            labels:
-              app: ${APP_NAME}
-          spec:
-            replicas: 1
-            selector:
-              matchLabels:
-                app: ${APP_NAME}
-            template:
-              metadata:
-                labels:
-                  app: ${APP_NAME}
-              spec:
-                containers:
-                  - name: ${APP_NAME}
-                    image: ${IMAGE_URI}
-                    imagePullPolicy: Always
-                    ports:
-                      - containerPort: 8080
-                    readinessProbe:
-                      httpGet:
-                        path: /
-                        port: 8080
-                      initialDelaySeconds: 5
-                      periodSeconds: 10
-                    livenessProbe:
-                      httpGet:
-                        path: /
-                        port: 8080
-                      initialDelaySeconds: 15
-                      periodSeconds: 20
-                    resources:
-                      requests:
-                        cpu: 100m
-                        memory: 128Mi
-                      limits:
-                        cpu: 500m
-                        memory: 512Mi
-          ---
-          apiVersion: v1
-          kind: Service
-          metadata:
-            name: ${APP_NAME}
-            namespace: ${K8S_NAMESPACE}
-          spec:
-            type: ClusterIP
-            selector:
-              app: ${APP_NAME}
-            ports:
-              - protocol: TCP
-                port: 80
-                targetPort: 8080
-          EOF
+          # Apply versioned Kubernetes manifests from the repository
+          # Expectation: manifests (Deployment, Service, etc.) live under ./k8s
+          kubectl apply -n "$K8S_NAMESPACE" -f k8s/
 
+          # Update the deployment to use the freshly built image
+          kubectl set image deployment/"$APP_NAME" "$APP_NAME"="$IMAGE_URI" -n "$K8S_NAMESPACE"
+
+          # Wait for rollout to complete
           kubectl rollout status deployment/"$APP_NAME" -n "$K8S_NAMESPACE" --timeout=180s
 
       - name: Apply ALB ingress (optional)
@@ -169,33 +117,8 @@ jobs:
           DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
           ACM_CERT_ARN: ${{ vars.ACM_CERT_ARN }}
         run: |
-          cat <<EOF | kubectl apply -f -
-          apiVersion: networking.k8s.io/v1
-          kind: Ingress
-          metadata:
-            name: ${APP_NAME}
-            namespace: ${K8S_NAMESPACE}
-            annotations:
-              kubernetes.io/ingress.class: alb
-              alb.ingress.kubernetes.io/scheme: internet-facing
-              alb.ingress.kubernetes.io/target-type: ip
-              alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
-              alb.ingress.kubernetes.io/certificate-arn: ${ACM_CERT_ARN}
-              alb.ingress.kubernetes.io/ssl-redirect: '443'
-              alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=300
-          spec:
-            rules:
-              - host: ${DOMAIN_NAME}
-                http:
-                  paths:
-                    - path: /
-                      pathType: Prefix
-                      backend:
-                        service:
-                          name: ${APP_NAME}
-                          port:
-                            number: 80
-          EOF
+          # Apply Ingress from a versioned manifest file, allowing env substitution
+          envsubst < k8s/ingress.yaml | kubectl apply -n "$K8S_NAMESPACE" -f -
 
       - name: Show deployment resources
         run: |

@@ -3,13 +3,13 @@ package websocket
 import (
 	"log"
 	"net/http"
-	"strings"
+	"net/url"
 
 	"github.com/gorilla/websocket"
 )
 
 const (
-	maxMessageSize = 512 // max bytes per incoming WS message
+	maxMessageSize = 2048 // max bytes per incoming WS message (allows for UTF-8 and JSON overhead)
 )
 
 var upgrader = websocket.Upgrader{
@@ -20,10 +20,12 @@ var upgrader = websocket.Upgrader{
 		if origin == "" {
 			return false // require an Origin header
 		}
-		host := r.Host
-		// Allow same-origin only: origin must end with the request host
-		// e.g. http://localhost:8080 matches Host: localhost:8080
-		return strings.HasSuffix(origin, "://"+host)
+		parsed, err := url.Parse(origin)
+		if err != nil {
+			return false
+		}
+		// Allow same-origin only: compare parsed host to request host
+		return parsed.Host == r.Host
 	},
 }
 

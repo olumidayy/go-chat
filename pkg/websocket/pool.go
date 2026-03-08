@@ -72,12 +72,19 @@ func (pool *Pool) Start() {
 				client.Conn.Close()
 				break
 			}
-			pool.Clients[client] = true
+			// Atomically check and reserve the name, then add to pool.Clients
+			pool.mu.Lock()
 			if client.Name != "" {
-				pool.mu.Lock()
+				if pool.activeNames[strings.ToLower(client.Name)] {
+					pool.mu.Unlock()
+					_ = client.Conn.WriteJSON(map[string]string{"error": "name_taken"})
+					client.Conn.Close()
+					break
+				}
 				pool.activeNames[strings.ToLower(client.Name)] = true
-				pool.mu.Unlock()
 			}
+			pool.Clients[client] = true
+			pool.mu.Unlock()
 			log.Printf("pool %s: %d clients", pool.ID, len(pool.Clients))
 
 			// Announce join to everyone

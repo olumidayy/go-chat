@@ -1751,7 +1751,7 @@ function showRoomOverlay() {
   var urlRoom = params.get("room");
   if (urlRoom) {
     roomCodeInput.value = urlRoom.toUpperCase();
-    joinRoomBtn.disabled = false;
+    joinRoomBtn.disabled = urlRoom.trim().length !== 6;
   }
 
   roomCodeInput.focus();
@@ -1759,7 +1759,7 @@ function showRoomOverlay() {
 
 roomCodeInput.addEventListener("input", function() {
   roomCodeInput.value = roomCodeInput.value.toUpperCase();
-  joinRoomBtn.disabled = roomCodeInput.value.trim().length < 4;
+  joinRoomBtn.disabled = roomCodeInput.value.trim().length !== 6;
   roomError.classList.remove("visible");
 });
 
@@ -1821,7 +1821,7 @@ enterRoomBtn.addEventListener("click", function() {
 
 joinRoomBtn.addEventListener("click", function() {
   var code = roomCodeInput.value.trim().toUpperCase();
-  if (code.length < 4) return;
+  if (code.length !== 6) return;
 
   joinRoomBtn.disabled = true;
   roomError.classList.remove("visible");
@@ -2053,7 +2053,7 @@ function appendSystem(text, letters) {
 }
 
 function appendPill(name, action) {
-  var icon = action === "joined" ? "\u{1F44B}" : "\u{1F44B}";
+  var icon = action === "joined" ? "\u{1F44B}" : "\u{1F6AA}";
   var cls = action === "joined" ? "pill-join" : "pill-leave";
   var html = '<div class="chat-pill ' + cls + '">'
     + '<span class="chat-pill-icon">' + icon + '</span>'

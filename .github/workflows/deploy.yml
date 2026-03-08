@@ -51,15 +51,26 @@ jobs:
             exit 1
           fi
 
+      - name: Select AWS auth mode
+        id: auth-mode
+        env:
+          AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+        run: |
+          if [ -n "$AWS_ROLE_TO_ASSUME" ]; then
+            echo "mode=oidc" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=keys" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Configure AWS credentials (OIDC role)
-        if: ${{ secrets.AWS_ROLE_TO_ASSUME != '' }}
+        if: ${{ steps.auth-mode.outputs.mode == 'oidc' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-region: ${{ env.AWS_REGION }}
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
 
       - name: Configure AWS credentials (access key fallback)
-        if: ${{ secrets.AWS_ROLE_TO_ASSUME == '' }}
+        if: ${{ steps.auth-mode.outputs.mode == 'keys' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-region: ${{ env.AWS_REGION }}

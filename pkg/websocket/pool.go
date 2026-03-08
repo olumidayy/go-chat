@@ -2,6 +2,8 @@ package websocket
 
 import (
 	"fmt"
+	"log"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -12,14 +14,17 @@ import (
 const (
 	poolChannelBuffer = 256
 	clientSendBuffer  = 32
+	MaxClientsPerRoom = 20
 )
 
 type Pool struct {
+	ID             string
 	Register       chan *Client
 	Unregister     chan *Client
 	Clients        map[*Client]bool
 	Broadcast      chan Message
 	AddData        chan MessageData
+	done           chan struct{}
 	dictionary     map[string]struct{}
 	letterSources  []string
 	mu             sync.RWMutex
@@ -29,6 +34,8 @@ type Pool struct {
 	playerScores   map[string]int
 	playerWords    map[string]int
 	gameTimer      *time.Timer
+	activeNames    map[string]bool
+	onEmpty        func() // called when last client leaves
 }
 
 func NewPool() *Pool {
@@ -40,49 +47,139 @@ func NewPool() *Pool {
 		Clients:       make(map[*Client]bool),
 		Broadcast:     make(chan Message, poolChannelBuffer),
 		AddData:       make(chan MessageData, poolChannelBuffer),
+		done:          make(chan struct{}),
 		dictionary:    buildWordSet(words),
 		letterSources: buildLetterSources(words),
 		GameInSession: false,
+		activeNames:   make(map[string]bool),
 	}
+}
+
+// Stop signals the Start goroutine to exit.
+func (pool *Pool) Stop() {
+	close(pool.done)
 }
 
 func (pool *Pool) Start() {
 	for {
 		select {
+		case <-pool.done:
+			log.Printf("pool %s: shutdown", pool.ID)
+			return
 		case client := <-pool.Register:
+			// Enforce max clients per room
+			if len(pool.Clients) >= MaxClientsPerRoom {
+				_ = client.Conn.Close()
+				break
+			}
+			// Atomically check and reserve the name, then add to pool.Clients
+			pool.mu.Lock()
+			if client.Name != "" {
+				if pool.activeNames[strings.ToLower(client.Name)] {
+					pool.mu.Unlock()
+					_ = client.Conn.WriteJSON(map[string]string{"error": "name_taken"})
+					_ = client.Conn.Close()
+					break
+				}
+				pool.activeNames[strings.ToLower(client.Name)] = true
+			}
 			pool.Clients[client] = true
-			fmt.Println("Size of Connection Pool: ", len(pool.Clients))
-			for client := range pool.Clients {
-				fmt.Println(client)
-				// client.Conn.WriteJSON(Message{Type: 1, Body: "New User Joined..."})
+			pool.mu.Unlock()
+			log.Printf("pool %s: %d clients", pool.ID, len(pool.Clients))
+
+			// Announce join to everyone
+			if client.Name != "" {
+				members := pool.ActiveMembers()
+				joinMsg := MessageData{
+					Name:    "Jumble",
+					Text:    fmt.Sprintf("%s joined the room.", client.Name),
+					Members: members,
+				}
+				// If a game is in session, attach current state to the announcement
+				pool.mu.RLock()
+				if pool.GameInSession {
+					joinMsg.Letters = pool.roundLettersLocked()
+					joinMsg.Scores = pool.currentLeaderboardLocked()
+					joinMsg.RoundState = roundStateActive
+				}
+				pool.mu.RUnlock()
+
+				for c := range pool.Clients {
+					select {
+					case c.Send <- joinMsg:
+					default:
+					}
+				}
+
+				// If a game is in session, send a private catch-up to the new client
+				pool.mu.RLock()
+				if pool.GameInSession {
+					catchUp := MessageData{
+						Name:       "Jumble",
+						Text:       "A round is in progress! Form words from the letters above.",
+						Scores:     pool.currentLeaderboardLocked(),
+						Letters:    pool.roundLettersLocked(),
+						RoundState: roundStateActive,
+					}
+					select {
+					case client.Send <- catchUp:
+					default:
+					}
+				}
+				pool.mu.RUnlock()
 			}
 		case client := <-pool.Unregister:
 			if _, ok := pool.Clients[client]; ok {
+				leftName := client.Name
 				delete(pool.Clients, client)
 				close(client.Send)
+				if client.Name != "" {
+					pool.mu.Lock()
+					delete(pool.activeNames, strings.ToLower(client.Name))
+					pool.mu.Unlock()
+				}
+				// Announce departure
+				if leftName != "" && len(pool.Clients) > 0 {
+					members := pool.ActiveMembers()
+					leaveMsg := MessageData{
+						Name:    "Jumble",
+						Text:    fmt.Sprintf("%s left the room.", leftName),
+						Members: members,
+					}
+					pool.mu.RLock()
+					if pool.GameInSession {
+						leaveMsg.Letters = pool.roundLettersLocked()
+						leaveMsg.Scores = pool.currentLeaderboardLocked()
+						leaveMsg.RoundState = roundStateActive
+					}
+					pool.mu.RUnlock()
+					for c := range pool.Clients {
+						select {
+						case c.Send <- leaveMsg:
+						default:
+						}
+					}
+				}
 			}
 			if len(pool.Clients) == 0 {
 				pool.resetGame()
+				if pool.onEmpty != nil {
+					go pool.onEmpty()
+				}
 			}
-			fmt.Println("Size of Connection Pool: ", len(pool.Clients))
-			for client := range pool.Clients {
-				fmt.Println(client)
-				// client.Conn.WriteJSON(Message{Type: 1, Body: "User Disconnected..."})
-			}
+
 		case message := <-pool.Broadcast:
-			fmt.Println("Sending message to all clients in Pool")
 			for client := range pool.Clients {
 				select {
 				case client.Send <- message.Body:
 				default:
-					fmt.Println("Client send buffer full. Disconnecting slow client.")
+					log.Printf("pool %s: dropping slow client", pool.ID)
 					delete(pool.Clients, client)
 					close(client.Send)
-					client.Conn.Close()
+					_ = client.Conn.Close()
 				}
 			}
 		case data := <-pool.AddData:
-			fmt.Println("Data received in pool:", data)
 			if result, ok := pool.HandleGuess(data); ok {
 				pool.Broadcast <- Message{Type: websocket.TextMessage, Body: result}
 			}
@@ -95,6 +192,50 @@ func (pool *Pool) IsGameInSession() bool {
 	defer pool.mu.RUnlock()
 
 	return pool.GameInSession
+}
+
+// CurrentRoundState returns a catch-up message for the active round, or nil.
+func (pool *Pool) CurrentRoundState() *MessageData {
+	pool.mu.RLock()
+	defer pool.mu.RUnlock()
+
+	if !pool.GameInSession {
+		return nil
+	}
+	msg := MessageData{
+		Name:       "Jumble",
+		Text:       "A round is already in progress! Keep guessing.",
+		Scores:     pool.currentLeaderboardLocked(),
+		Letters:    pool.roundLettersLocked(),
+		RoundState: roundStateActive,
+	}
+	return &msg
+}
+
+func (pool *Pool) IsNameTaken(name string) bool {
+	pool.mu.RLock()
+	defer pool.mu.RUnlock()
+
+	return pool.activeNames[strings.ToLower(name)]
+}
+
+func (pool *Pool) ClientCount() int {
+	pool.mu.RLock()
+	defer pool.mu.RUnlock()
+
+	return len(pool.activeNames)
+}
+
+// ActiveMembers returns the display names of all connected clients.
+func (pool *Pool) ActiveMembers() []string {
+	names := make([]string, 0, len(pool.Clients))
+	for c := range pool.Clients {
+		if c.Name != "" {
+			names = append(names, c.Name)
+		}
+	}
+	sort.Strings(names)
+	return names
 }
 
 func (pool *Pool) StartGame(duration time.Duration, playerName string) (GameRound, bool) {
@@ -117,7 +258,7 @@ func (pool *Pool) StartGame(duration time.Duration, playerName string) (GameRoun
 		pool.gameTimer.Stop()
 	}
 
-	fmt.Println("TIMER STARTED!", time.Now())
+	log.Printf("pool %s: game started", pool.ID)
 	pool.gameTimer = time.AfterFunc(duration, func() {
 		pool.endGame()
 	})
@@ -140,7 +281,7 @@ func (pool *Pool) HandleGuess(data MessageData) (MessageData, bool) {
 	pool.registerPlayerLocked(playerName)
 
 	guess := normalizeWord(data.Text)
-	if guess == "" || guess == "anagrams" {
+	if guess == "" || guess == "jumble" {
 		return MessageData{}, false
 	}
 
@@ -167,7 +308,7 @@ func (pool *Pool) HandleGuess(data MessageData) (MessageData, bool) {
 	leaderboard := pool.currentLeaderboardLocked()
 
 	return MessageData{
-		Name:       "Anagrams",
+		Name:       "Jumble",
 		Text:       fmt.Sprintf("%s found %s for %d Scrabble point%s.\nTotal: %d point%s across %d word%s.", winner, strings.ToUpper(guess), earnedPoints, pluralSuffix(earnedPoints), totalScore, pluralSuffix(totalScore), wordsFound, pluralSuffix(wordsFound)),
 		Scores:     leaderboard,
 		Letters:    pool.roundLettersLocked(),
@@ -190,7 +331,7 @@ func (pool *Pool) endGame() {
 	pool.resetGameLocked()
 	pool.mu.Unlock()
 
-	fmt.Println("TIMER EXPIRED!", time.Now())
+	log.Printf("pool %s: game ended", pool.ID)
 	lines := []string{
 		"Time's up!",
 	}
@@ -210,7 +351,7 @@ func (pool *Pool) endGame() {
 	pool.Broadcast <- Message{
 		Type: websocket.TextMessage,
 		Body: MessageData{
-			Name:       "Anagrams",
+			Name:       "Jumble",
 			Text:       strings.Join(lines, "\n"),
 			Scores:     leaderboardEntries,
 			Letters:    letters,
@@ -229,7 +370,7 @@ func (pool *Pool) roundLettersLocked() string {
 
 func (pool *Pool) roundMessageLocked(text string) MessageData {
 	return MessageData{
-		Name:       "Anagrams",
+		Name:       "Jumble",
 		Text:       text,
 		Scores:     pool.currentLeaderboardLocked(),
 		Letters:    pool.roundLettersLocked(),

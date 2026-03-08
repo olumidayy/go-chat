@@ -1,0 +1,28 @@
+#!/bin/sh
+# Pre-push hook: runs checks before allowing a git push.
+# Fails fast on any error to prevent pushing broken code.
+#
+# Install: make hooks
+
+set -e
+
+echo "🔍 Running pre-push checks..."
+
+echo "  → go build ./..."
+go build ./...
+
+echo "  → go vet ./..."
+go vet ./...
+
+echo "  → go test ./..."
+go test ./...
+
+# Run golangci-lint if installed
+if command -v golangci-lint >/dev/null 2>&1; then
+    echo "  → golangci-lint run"
+    golangci-lint run
+else
+    echo "  ⚠ golangci-lint not found, skipping (install: brew install golangci-lint)"
+fi
+
+echo "✅ All pre-push checks passed."

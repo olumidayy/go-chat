@@ -134,9 +134,11 @@ jobs:
         env:
           DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
           ACM_CERT_ARN: ${{ vars.ACM_CERT_ARN }}
+          WWW_DOMAIN: ${{ vars.WWW_DOMAIN }}
         run: |
           # Apply Ingress from a versioned manifest file, allowing env substitution
-          APP_NAME="$APP_NAME" DOMAIN_NAME="$DOMAIN_NAME" ACM_CERT_ARN="$ACM_CERT_ARN" \
+          WWW_DOMAIN="${WWW_DOMAIN:-www.${DOMAIN_NAME}}"
+          export APP_NAME DOMAIN_NAME ACM_CERT_ARN WWW_DOMAIN
           envsubst < k8s/ingress.yaml | kubectl apply -n "$K8S_NAMESPACE" -f -
 
       - name: Show deployment resources

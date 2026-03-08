@@ -274,7 +274,7 @@ func setupRoutes() {
 }
 
 func main() {
-	fmt.Println("Distributed Chat App v0.01")
+	fmt.Println("JUMBLE v1.0.0")
 	setupRoutes()
 	server := &http.Server{
 		Addr:         ":8080",

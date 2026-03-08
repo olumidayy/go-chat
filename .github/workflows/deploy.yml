@@ -112,15 +112,22 @@ jobs:
         run: |
           kubectl get namespace "$K8S_NAMESPACE" >/dev/null 2>&1 || kubectl create namespace "$K8S_NAMESPACE"
 
-          # Apply versioned Kubernetes manifests from the repository
-          # Expectation: manifests (Deployment, Service, etc.) live under ./k8s
-          kubectl apply -n "$K8S_NAMESPACE" -f k8s/
+          # Apply only base workload manifests here.
+          # Ingress contains placeholders and is applied in a separate envsubst step.
+          kubectl apply -n "$K8S_NAMESPACE" -f k8s/deployment.yaml
+          kubectl apply -n "$K8S_NAMESPACE" -f k8s/service.yaml
 
           # Update the deployment to use the freshly built image
           kubectl set image deployment/"$APP_NAME" "$APP_NAME"="$IMAGE_URI" -n "$K8S_NAMESPACE"
 
           # Wait for rollout to complete
           kubectl rollout status deployment/"$APP_NAME" -n "$K8S_NAMESPACE" --timeout=180s
+
+      - name: Install envsubst
+        if: ${{ vars.DOMAIN_NAME != '' && vars.ACM_CERT_ARN != '' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gettext-base
 
       - name: Apply ALB ingress (optional)
         if: ${{ vars.DOMAIN_NAME != '' && vars.ACM_CERT_ARN != '' }}
@@ -129,6 +136,7 @@ jobs:
           ACM_CERT_ARN: ${{ vars.ACM_CERT_ARN }}
         run: |
           # Apply Ingress from a versioned manifest file, allowing env substitution
+          APP_NAME="$APP_NAME" DOMAIN_NAME="$DOMAIN_NAME" ACM_CERT_ARN="$ACM_CERT_ARN" \
           envsubst < k8s/ingress.yaml | kubectl apply -n "$K8S_NAMESPACE" -f -
 
       - name: Show deployment resources

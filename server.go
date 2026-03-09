@@ -6,10 +6,10 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/olumidayy/go-websockets/pkg/websocket"
@@ -24,8 +24,6 @@ const (
 	maxMessageLen  = 300
 	maxRoomsGlobal = 100
 )
-
-var validUsername = regexp.MustCompile(`^[a-zA-Z0-9 _\-]+$`)
 
 // ─── Rate limiter (per-IP token bucket) ─────────────────────
 type rateLimiter struct {
@@ -141,7 +139,26 @@ func sanitizeName(name string) string {
 
 func isValidName(name string) bool {
 	l := utf8.RuneCountInString(name)
-	return l >= minUsernameLen && l <= maxUsernameLen && validUsername.MatchString(name)
+	if l < minUsernameLen || l > maxUsernameLen {
+		return false
+	}
+
+	for _, r := range name {
+		switch {
+		case unicode.IsLetter(r), unicode.IsDigit(r):
+			continue
+		case r == ' ' || r == '_' || r == '-':
+			continue
+		case unicode.Is(unicode.So, r), unicode.Is(unicode.Sk, r):
+			continue
+		case r == '\u200D' || r == '\uFE0F' || r == '\u20E3':
+			continue
+		default:
+			return false
+		}
+	}
+
+	return true
 }
 
 // ─── Handlers ───────────────────────────────────────────────

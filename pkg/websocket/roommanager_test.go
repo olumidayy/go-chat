@@ -1,8 +1,10 @@
 package websocket
 
 import (
+	"errors"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestNewRoomManager(t *testing.T) {
@@ -31,6 +33,77 @@ func TestCreateRoom(t *testing.T) {
 	}
 	if rm.RoomCount() != 1 {
 		t.Errorf("expected 1 room, got %d", rm.RoomCount())
+	}
+}
+
+func TestCreateRoomWithDuration(t *testing.T) {
+	rm := NewRoomManager()
+	code, pool := rm.CreateRoomWithDuration(90 * time.Second)
+	defer rm.RemoveRoom(code)
+
+	if pool == nil {
+		t.Fatal("CreateRoomWithDuration returned nil pool")
+	}
+
+	if got := pool.RoundDuration(); got != 90*time.Second {
+		t.Fatalf("pool.RoundDuration() = %v, want %v", got, 90*time.Second)
+	}
+}
+
+func TestIsValidRoomCode(t *testing.T) {
+	valid := []string{"ABCDE", "ROOM123", "MYCODE10", "abc123"}
+	for _, code := range valid {
+		if !IsValidRoomCode(code) {
+			t.Fatalf("expected %q to be valid", code)
+		}
+	}
+
+	invalid := []string{"", "ABCD", "ABCDEFGHIJK", "AB-CD", "AB_CD", "AB CD", "🧩ROOM"}
+	for _, code := range invalid {
+		if IsValidRoomCode(code) {
+			t.Fatalf("expected %q to be invalid", code)
+		}
+	}
+}
+
+func TestCreateRoomWithCode_Success(t *testing.T) {
+	rm := NewRoomManager()
+	code, pool, err := rm.CreateRoomWithCode("alpha9", 45*time.Second)
+	if err != nil {
+		t.Fatalf("CreateRoomWithCode returned error: %v", err)
+	}
+	defer rm.RemoveRoom(code)
+
+	if code != "ALPHA9" {
+		t.Fatalf("expected normalized code ALPHA9, got %s", code)
+	}
+	if pool == nil {
+		t.Fatal("CreateRoomWithCode returned nil pool")
+	}
+	if got := pool.RoundDuration(); got != 45*time.Second {
+		t.Fatalf("pool.RoundDuration() = %v, want %v", got, 45*time.Second)
+	}
+}
+
+func TestCreateRoomWithCode_Invalid(t *testing.T) {
+	rm := NewRoomManager()
+	_, _, err := rm.CreateRoomWithCode("AB", time.Minute)
+	if !errors.Is(err, ErrInvalidRoomCode) {
+		t.Fatalf("expected ErrInvalidRoomCode, got %v", err)
+	}
+}
+
+func TestCreateRoomWithCode_Taken(t *testing.T) {
+	rm := NewRoomManager()
+	code, _, err := rm.CreateRoomWithCode("ROOM77", time.Minute)
+	if err != nil {
+		t.Fatalf("first CreateRoomWithCode failed: %v", err)
+	}
+	defer rm.RemoveRoom(code)
+
+	_, _, err = rm.CreateRoomWithCode("room77", time.Minute)
+	if !errors.Is(err, ErrRoomCodeTaken) {
+		t.Fatalf("expected ErrRoomCodeTaken, got %v", err)
 	}
 }
 

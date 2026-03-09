@@ -10,7 +10,17 @@ import (
 	"unicode"
 )
 
-const defaultGameDuration = time.Minute
+const (
+	defaultGameDuration = time.Minute
+	minGameDuration     = 30 * time.Second
+	maxGameDuration     = 2 * time.Minute
+)
+
+const (
+	DefaultRoundDuration = defaultGameDuration
+	MinRoundDuration     = minGameDuration
+	MaxRoundDuration     = maxGameDuration
+)
 
 //go:embed words.txt
 var embeddedWords string
@@ -194,6 +204,101 @@ func normalizeWord(word string) string {
 	}
 
 	return builder.String()
+}
+
+func parseRoundDurationToken(token string) (time.Duration, bool) {
+	token = strings.ToLower(strings.TrimSpace(token))
+	if token == "" {
+		return 0, false
+	}
+
+	if seconds, err := strconv.Atoi(token); err == nil && seconds > 0 {
+		return time.Duration(seconds) * time.Second, true
+	}
+
+	units := []struct {
+		suffix string
+		unit   time.Duration
+	}{
+		{suffix: "seconds", unit: time.Second},
+		{suffix: "second", unit: time.Second},
+		{suffix: "secs", unit: time.Second},
+		{suffix: "sec", unit: time.Second},
+		{suffix: "s", unit: time.Second},
+		{suffix: "minutes", unit: time.Minute},
+		{suffix: "minute", unit: time.Minute},
+		{suffix: "mins", unit: time.Minute},
+		{suffix: "min", unit: time.Minute},
+		{suffix: "m", unit: time.Minute},
+	}
+
+	for _, option := range units {
+		if !strings.HasSuffix(token, option.suffix) {
+			continue
+		}
+
+		valuePart := strings.TrimSpace(strings.TrimSuffix(token, option.suffix))
+		value, err := strconv.Atoi(valuePart)
+		if err != nil || value <= 0 {
+			return 0, false
+		}
+
+		return time.Duration(value) * option.unit, true
+	}
+
+	return 0, false
+}
+
+func parseRoundStartCommand(text string) (time.Duration, bool, string) {
+	parts := strings.Fields(strings.TrimSpace(text))
+	if len(parts) == 0 || !strings.EqualFold(parts[0], "JUMBLE") {
+		return 0, false, ""
+	}
+
+	if len(parts) == 1 {
+		return defaultGameDuration, true, ""
+	}
+
+	if len(parts) > 2 {
+		return 0, true, "Usage: JUMBLE [duration], e.g. JUMBLE 45 or JUMBLE 2m."
+	}
+
+	duration, ok := parseRoundDurationToken(parts[1])
+	if !ok {
+		return 0, true, "Could not parse duration. Try JUMBLE 45, JUMBLE 90s, or JUMBLE 2m."
+	}
+
+	if duration < minGameDuration || duration > maxGameDuration {
+		return 0, true, "Round duration must be between 30 seconds and 2 minutes."
+	}
+
+	return duration, true, ""
+}
+
+func formatRoundDuration(duration time.Duration) string {
+	if duration%time.Minute == 0 {
+		minutes := int(duration / time.Minute)
+		if minutes == 1 {
+			return "1 minute"
+		}
+
+		return itoa(minutes) + " minutes"
+	}
+
+	seconds := int(duration / time.Second)
+	if seconds == 1 {
+		return "1 second"
+	}
+
+	return itoa(seconds) + " seconds"
+}
+
+func normalizeRoundDuration(duration time.Duration) time.Duration {
+	if duration < minGameDuration || duration > maxGameDuration {
+		return defaultGameDuration
+	}
+
+	return duration
 }
 
 func canBuildWord(word, letters string) bool {

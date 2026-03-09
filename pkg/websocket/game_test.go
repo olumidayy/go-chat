@@ -3,7 +3,103 @@ package websocket
 import (
 	"strings"
 	"testing"
+	"time"
 )
+
+func TestParseRoundStartCommand_NotACommand(t *testing.T) {
+	duration, isStart, message := parseRoundStartCommand("hello there")
+	if isStart {
+		t.Fatal("expected non-command text to not be treated as a start command")
+	}
+	if duration != 0 {
+		t.Fatalf("expected zero duration for non-command text, got %v", duration)
+	}
+	if message != "" {
+		t.Fatalf("expected empty message for non-command text, got %q", message)
+	}
+}
+
+func TestParseRoundStartCommand_DefaultDuration(t *testing.T) {
+	duration, isStart, message := parseRoundStartCommand("JUMBLE")
+	if !isStart {
+		t.Fatal("expected JUMBLE to be treated as a start command")
+	}
+	if message != "" {
+		t.Fatalf("expected no validation message, got %q", message)
+	}
+	if duration != defaultGameDuration {
+		t.Fatalf("expected default duration %v, got %v", defaultGameDuration, duration)
+	}
+}
+
+func TestParseRoundStartCommand_WithValidDurations(t *testing.T) {
+	tests := []struct {
+		text string
+		want time.Duration
+	}{
+		{text: "JUMBLE 30", want: 30 * time.Second},
+		{text: "JUMBLE 90s", want: 90 * time.Second},
+		{text: "JUMBLE 120", want: 120 * time.Second},
+		{text: "JUMBLE 2m", want: 2 * time.Minute},
+		{text: "JUMBLE 1min", want: time.Minute},
+	}
+
+	for _, tt := range tests {
+		duration, isStart, message := parseRoundStartCommand(tt.text)
+		if !isStart {
+			t.Fatalf("%q should be treated as a start command", tt.text)
+		}
+		if message != "" {
+			t.Fatalf("%q should be valid, got message %q", tt.text, message)
+		}
+		if duration != tt.want {
+			t.Fatalf("%q duration = %v, want %v", tt.text, duration, tt.want)
+		}
+	}
+}
+
+func TestParseRoundStartCommand_OutOfRange(t *testing.T) {
+	for _, text := range []string{"JUMBLE 29", "JUMBLE 121", "JUMBLE 3m"} {
+		_, isStart, message := parseRoundStartCommand(text)
+		if !isStart {
+			t.Fatalf("%q should be treated as a start command", text)
+		}
+		if !strings.Contains(message, "between 30 seconds and 2 minutes") {
+			t.Fatalf("%q expected range error, got %q", text, message)
+		}
+	}
+}
+
+func TestParseRoundStartCommand_InvalidFormat(t *testing.T) {
+	for _, text := range []string{"JUMBLE abc", "JUMBLE 1m 30s", "JUMBLE -20"} {
+		_, isStart, message := parseRoundStartCommand(text)
+		if !isStart {
+			t.Fatalf("%q should be treated as a start command", text)
+		}
+		if strings.TrimSpace(message) == "" {
+			t.Fatalf("%q should return a validation message", text)
+		}
+	}
+}
+
+func TestFormatRoundDuration(t *testing.T) {
+	tests := []struct {
+		duration time.Duration
+		want     string
+	}{
+		{duration: 30 * time.Second, want: "30 seconds"},
+		{duration: 90 * time.Second, want: "90 seconds"},
+		{duration: time.Minute, want: "1 minute"},
+		{duration: 2 * time.Minute, want: "2 minutes"},
+	}
+
+	for _, tt := range tests {
+		got := formatRoundDuration(tt.duration)
+		if got != tt.want {
+			t.Fatalf("formatRoundDuration(%v) = %q, want %q", tt.duration, got, tt.want)
+		}
+	}
+}
 
 func TestNormalizeWord_Basic(t *testing.T) {
 	tests := []struct {

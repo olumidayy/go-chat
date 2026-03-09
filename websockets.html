@@ -20,7 +20,7 @@
     <div class="landing-features">
       <div class="landing-feature">
         <span class="landing-feature-icon">&#9201;</span>
-        <span>1 minute rounds</span>
+        <span>30s to 2m rounds</span>
       </div>
       <div class="landing-feature">
         <span class="landing-feature-icon">&#127942;</span>
@@ -65,6 +65,20 @@
     <p class="room-card-sub" id="roomGreeting">Welcome! Create a new room or join an existing one.</p>
 
     <div class="room-actions">
+      <div class="room-duration-row">
+        <label class="room-duration-label" for="roundDurationSelect">Round duration (room creator)</label>
+        <select id="roundDurationSelect" class="room-duration-select">
+          <option value="30">30 seconds</option>
+          <option value="45">45 seconds</option>
+          <option value="60" selected>1 minute</option>
+          <option value="90">90 seconds</option>
+          <option value="120">2 minutes</option>
+        </select>
+      </div>
+      <div class="room-duration-row">
+        <label class="room-duration-label" for="customRoomCodeInput">Custom room code (optional)</label>
+        <input type="text" id="customRoomCodeInput" class="room-code-input room-custom-input" placeholder="5-10 letters or numbers" maxlength="10" autocomplete="off" spellcheck="false">
+      </div>
       <button class="room-action-btn room-create-btn" id="createRoomBtn">
         <span class="room-action-icon">&#10010;</span>
         <span class="room-action-label">Create Room</span>
@@ -73,7 +87,7 @@
       <div class="room-divider"><span>or</span></div>
       <div class="room-join-section">
         <div class="room-join-input-wrap">
-          <input type="text" id="roomCodeInput" class="room-code-input" placeholder="Enter room code&hellip;" maxlength="8" autocomplete="off" spellcheck="false">
+          <input type="text" id="roomCodeInput" class="room-code-input" placeholder="Enter room code (5-10 chars)&hellip;" maxlength="10" autocomplete="off" spellcheck="false">
           <button type="button" class="room-join-btn" id="joinRoomBtn" disabled>Join</button>
         </div>
         <div class="room-error" id="roomError"></div>
@@ -138,7 +152,7 @@
       <div class="letter-bank" id="letterBank">
         <div class="letter-bank-empty">No active round</div>
       </div>
-      <div class="letter-hint" id="letterHint">Type <kbd>JUMBLE</kbd> to start a round.</div>
+      <div class="letter-hint" id="letterHint">Type <kbd>JUMBLE</kbd> to start a round. Duration is set by the room creator.</div>
     </div>
 
     <div class="sidebar-section">
@@ -169,7 +183,7 @@
         <div class="welcome-icon">&#127918;</div>
         <h2>Welcome to Jumble!</h2>
         <p>A multiplayer word game. Type <strong>JUMBLE</strong> to start a round, then form valid English words from the given letters.</p>
-        <p class="welcome-sub">Scrabble scoring &middot; 1 minute per round &middot; No repeats</p>
+        <p class="welcome-sub">Scrabble scoring &middot; 30s&ndash;2m per round &middot; No repeats</p>
         <div class="welcome-funfact" id="welcomeFunFact"></div>
       </div>
     </div>
@@ -1472,6 +1486,41 @@ kbd {
   gap: 14px;
 }
 
+.room-duration-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 2px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-2);
+}
+
+.room-duration-label {
+  font-size: 0.78em;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+.room-duration-select {
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-family: var(--font);
+  font-size: 0.86em;
+  font-weight: 600;
+  outline: none;
+  min-width: 138px;
+}
+
+.room-duration-select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(167,139,250,.14);
+}
+
 .room-action-btn {
   width: 100%;
   display: flex;
@@ -1881,6 +1930,14 @@ kbd {
     gap: 8px;
     font-size: 0.84em;
   }
+  .room-duration-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .room-duration-select {
+    width: 100%;
+    min-width: 0;
+  }
   .app { flex-direction: column }
   .sidebar {
     width: 100%;
@@ -2065,6 +2122,8 @@ var roomOverlay    = document.getElementById("roomOverlay");
 var roomCard       = document.getElementById("roomCard");
 var roomGreeting   = document.getElementById("roomGreeting");
 var createRoomBtn  = document.getElementById("createRoomBtn");
+var roundDurationSelect = document.getElementById("roundDurationSelect");
+var customRoomCodeInput = document.getElementById("customRoomCodeInput");
 var joinRoomBtn    = document.getElementById("joinRoomBtn");
 var roomCodeInput  = document.getElementById("roomCodeInput");
 var roomError      = document.getElementById("roomError");
@@ -2075,6 +2134,14 @@ var roomCopyText   = document.getElementById("roomCopyText");
 var enterRoomBtn   = document.getElementById("enterRoomBtn");
 var roomBackBtn    = document.getElementById("roomBackBtn");
 var roomActions    = document.querySelector(".room-actions");
+
+function normalizeRoomCode(value) {
+  return (value || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+function isValidRoomCode(value) {
+  return /^[A-Z0-9]{5,10}$/.test(value || "");
+}
 
 function showRoomOverlay() {
   nameOverlay.classList.add("leaving");
@@ -2087,16 +2154,21 @@ function showRoomOverlay() {
   var params = new URLSearchParams(window.location.search);
   var urlRoom = params.get("room");
   if (urlRoom) {
-    roomCodeInput.value = urlRoom.toUpperCase();
-    joinRoomBtn.disabled = urlRoom.trim().length !== 6;
+    roomCodeInput.value = normalizeRoomCode(urlRoom);
+    joinRoomBtn.disabled = !isValidRoomCode(roomCodeInput.value);
   }
 
   roomCodeInput.focus();
 }
 
 roomCodeInput.addEventListener("input", function() {
-  roomCodeInput.value = roomCodeInput.value.toUpperCase();
-  joinRoomBtn.disabled = roomCodeInput.value.trim().length !== 6;
+  roomCodeInput.value = normalizeRoomCode(roomCodeInput.value);
+  joinRoomBtn.disabled = !isValidRoomCode(roomCodeInput.value);
+  roomError.classList.remove("visible");
+});
+
+customRoomCodeInput.addEventListener("input", function() {
+  customRoomCodeInput.value = normalizeRoomCode(customRoomCodeInput.value);
   roomError.classList.remove("visible");
 });
 
@@ -2119,8 +2191,37 @@ createRoomBtn.addEventListener("click", function() {
   createRoomBtn.disabled = true;
   createRoomBtn.style.opacity = ".5";
 
-  fetch("/api/rooms/create", { method: "POST" })
-    .then(function(res) { return res.json(); })
+  var selectedDuration = parseInt(roundDurationSelect.value, 10);
+  if (!Number.isFinite(selectedDuration) || selectedDuration < 30 || selectedDuration > 120) {
+    selectedDuration = 60;
+  }
+
+  var customCode = normalizeRoomCode(customRoomCodeInput.value);
+  if (customCode && !isValidRoomCode(customCode)) {
+    showRoomError("Custom code must be 5-10 letters or numbers.");
+    createRoomBtn.disabled = false;
+    createRoomBtn.style.opacity = "1";
+    return;
+  }
+
+  var payload = { durationSeconds: selectedDuration };
+  if (customCode) {
+    payload.roomCode = customCode;
+  }
+
+  fetch("/api/rooms/create", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  })
+    .then(function(res) {
+      if (!res.ok) {
+        return res.text().then(function(message) {
+          throw new Error((message || "").trim() || "Failed to create room. Try again.");
+        });
+      }
+      return res.json();
+    })
     .then(function(data) {
       ROOM_CODE = data.code;
       roomCodeBig.textContent = ROOM_CODE;
@@ -2132,8 +2233,8 @@ createRoomBtn.addEventListener("click", function() {
       url.searchParams.set("room", ROOM_CODE);
       history.replaceState(null, "", url);
     })
-    .catch(function() {
-      showRoomError("Failed to create room. Try again.");
+    .catch(function(err) {
+      showRoomError(err && err.message ? err.message : "Failed to create room. Try again.");
       createRoomBtn.disabled = false;
       createRoomBtn.style.opacity = "1";
     });
@@ -2157,8 +2258,8 @@ enterRoomBtn.addEventListener("click", function() {
 });
 
 joinRoomBtn.addEventListener("click", function() {
-  var code = roomCodeInput.value.trim().toUpperCase();
-  if (code.length !== 6) return;
+  var code = normalizeRoomCode(roomCodeInput.value.trim());
+  if (!isValidRoomCode(code)) return;
 
   joinRoomBtn.disabled = true;
   roomError.classList.remove("visible");
@@ -2191,6 +2292,7 @@ roomBackBtn.addEventListener("click", function() {
   createRoomBtn.disabled = false;
   createRoomBtn.style.opacity = "1";
   roomCodeInput.value = "";
+  customRoomCodeInput.value = "";
   joinRoomBtn.disabled = true;
   roomError.classList.remove("visible");
   ROOM_CODE = "";
@@ -2344,72 +2446,51 @@ var emojiSearch  = document.getElementById("emojiSearch");
 var emojiGrid    = document.getElementById("emojiGrid");
 var emojiEmpty   = document.getElementById("emojiEmpty");
 
-var EMOJI_OPTIONS = [
+var EMOJI_OPTIONS = [];
+var emojiOptionsLoaded = false;
+var EMOJI_FALLBACK = [
   {emoji:"😀", name:"grinning", tags:"happy smile"},
-  {emoji:"😄", name:"grinning with eyes", tags:"happy smile laugh"},
-  {emoji:"😁", name:"beaming", tags:"grin happy"},
   {emoji:"😂", name:"joy", tags:"laugh tears"},
-  {emoji:"🤣", name:"rofl", tags:"laugh rolling"},
   {emoji:"😊", name:"blush", tags:"smile warm"},
-  {emoji:"😉", name:"wink", tags:"playful"},
-  {emoji:"😍", name:"heart eyes", tags:"love"},
-  {emoji:"😘", name:"kiss", tags:"love"},
   {emoji:"😎", name:"sunglasses", tags:"cool"},
-  {emoji:"🤩", name:"star struck", tags:"wow excited"},
-  {emoji:"🥳", name:"party", tags:"celebrate"},
-  {emoji:"🤯", name:"mind blown", tags:"shock wow"},
-  {emoji:"😭", name:"loudly crying", tags:"sad tears"},
-  {emoji:"😅", name:"sweat smile", tags:"relief"},
-  {emoji:"😤", name:"huff", tags:"frustrated"},
-  {emoji:"🤔", name:"thinking", tags:"hmm"},
-  {emoji:"🫡", name:"salute", tags:"respect"},
-  {emoji:"😴", name:"sleeping", tags:"tired"},
-  {emoji:"🤗", name:"hug", tags:"support"},
-  {emoji:"👍", name:"thumbs up", tags:"yes ok"},
-  {emoji:"👎", name:"thumbs down", tags:"no"},
-  {emoji:"👏", name:"clap", tags:"applause"},
-  {emoji:"🙌", name:"raised hands", tags:"praise"},
-  {emoji:"🙏", name:"pray", tags:"thanks"},
-  {emoji:"🤝", name:"handshake", tags:"deal"},
-  {emoji:"👀", name:"eyes", tags:"watch"},
   {emoji:"🔥", name:"fire", tags:"hot lit"},
-  {emoji:"💯", name:"hundred", tags:"perfect"},
   {emoji:"✨", name:"sparkles", tags:"magic"},
-  {emoji:"⭐", name:"star", tags:"favorite"},
-  {emoji:"⚡", name:"lightning", tags:"energy fast"},
-  {emoji:"💥", name:"boom", tags:"impact"},
   {emoji:"🎉", name:"tada", tags:"party celebrate"},
-  {emoji:"🎊", name:"confetti", tags:"party celebrate"},
-  {emoji:"🎁", name:"gift", tags:"present"},
   {emoji:"🏆", name:"trophy", tags:"winner"},
-  {emoji:"🥇", name:"gold medal", tags:"winner first"},
   {emoji:"🚀", name:"rocket", tags:"launch"},
-  {emoji:"💡", name:"idea", tags:"think"},
-  {emoji:"🧠", name:"brain", tags:"smart"},
-  {emoji:"🎮", name:"gamepad", tags:"gaming"},
-  {emoji:"🕹️", name:"joystick", tags:"gaming"},
-  {emoji:"⌛", name:"hourglass", tags:"time"},
-  {emoji:"✅", name:"check", tags:"yes done"},
-  {emoji:"❌", name:"cross", tags:"no wrong"},
-  {emoji:"⚠️", name:"warning", tags:"alert"},
   {emoji:"❤️", name:"red heart", tags:"love"},
-  {emoji:"💜", name:"purple heart", tags:"love"},
-  {emoji:"🖤", name:"black heart", tags:"love"},
-  {emoji:"💙", name:"blue heart", tags:"love"},
-  {emoji:"💚", name:"green heart", tags:"love"},
-  {emoji:"🧡", name:"orange heart", tags:"love"},
-  {emoji:"🤍", name:"white heart", tags:"love"},
-  {emoji:"🤎", name:"brown heart", tags:"love"},
-  {emoji:"🎵", name:"music note", tags:"song"},
-  {emoji:"📣", name:"megaphone", tags:"announce"},
-  {emoji:"👋", name:"wave", tags:"hello"},
-  {emoji:"🤟", name:"love you gesture", tags:"hand"},
-  {emoji:"🤖", name:"robot", tags:"bot"},
   {emoji:"🧩", name:"puzzle", tags:"game"},
-  {emoji:"🎯", name:"target", tags:"goal"},
-  {emoji:"🌍", name:"globe", tags:"world"},
   {emoji:"☕", name:"coffee", tags:"break"}
 ];
+
+function loadEmojiOptions() {
+  if (emojiOptionsLoaded) return Promise.resolve();
+
+  return fetch("/api/emojis")
+    .then(function(res) {
+      if (!res.ok) throw new Error("emoji options request failed");
+      return res.json();
+    })
+    .then(function(data) {
+      if (data && Array.isArray(data.emojis)) {
+        EMOJI_OPTIONS = data.emojis.filter(function(item) {
+          return item && typeof item.emoji === "string" && typeof item.name === "string" && typeof item.tags === "string";
+        }).map(function(item) {
+          return { emoji: item.emoji, name: item.name.toLowerCase(), tags: item.tags.toLowerCase() };
+        });
+      }
+
+      if (!EMOJI_OPTIONS.length) {
+        EMOJI_OPTIONS = EMOJI_FALLBACK.slice();
+      }
+
+      emojiOptionsLoaded = true;
+    })
+    .catch(function() {
+      EMOJI_OPTIONS = EMOJI_FALLBACK.slice();
+      emojiOptionsLoaded = true;
+    });
+}
 
 function renderEmojiGrid(filter) {
   var query = (filter || "").trim().toLowerCase();
@@ -2462,7 +2543,9 @@ function openEmojiPicker() {
   emojiPicker.hidden = false;
   emojiBtn.setAttribute("aria-expanded", "true");
   emojiSearch.value = "";
-  renderEmojiGrid("");
+  loadEmojiOptions().then(function() {
+    renderEmojiGrid("");
+  });
   setTimeout(function() { emojiSearch.focus(); }, 0);
 }
 
@@ -2790,103 +2873,34 @@ var playerStreak = 0;
 /* ============================================================
    FUN FACTS & VIBES
    ============================================================ */
-var FUN_FACTS = [
-  "\u{1F4A1} \"Scrabble\" was invented in 1938 by an unemployed architect.",
-  "\u{1F9E0} The longest English word without repeating a letter is \"uncopyrightable\".",
-  "\u{1F4DA} English has over 170,000 words in current use.",
-  "\u{1F30D} \"Set\" has the most definitions of any English word (430+).",
-  "\u{1F4AC} A pangram uses every letter of the alphabet at least once.",
-  "\u{1F916} \"Q\" without \"U\" words: qi, qat, qoph, qanat, qadi.",
-  "\u{1F3AF} The blank tile in Scrabble is worth 0 but can be any letter.",
-  "\u{1F52E} \"Dreamt\" is the only English word ending in \"mt\".",
-  "\u{1F525} \"Pneumonoultramicroscopicsilicovolcanoconiosis\" is 45 letters long.",
-  "\u{1F3C6} The highest possible Scrabble score for a single word is 1778.",
-  "\u{1F4D6} \"Typewriter\" can be typed using only the top row of a keyboard.",
-  "\u{1F9EA} \"Lollipop\" is the longest word you can type with just your right hand.",
-  "\u{1F3AD} \"Rhythms\" is the longest English word without a vowel.",
-  "\u{1F50D} \"Subdermatoglyphic\" is the longest isogram (no repeating letters) at 17 letters.",
-  "\u{1F40D} An ambigram reads the same upside down — like \"SWIMS\".",
-  "\u{1F4DC} \"Bookkeeper\" is the only English word with three consecutive double letters.",
-  "\u{1F4AB} \"Almost\" is the longest common English word in alphabetical order.",
-  "\u{1FAF0} Over 80% of English words with the prefix \"un-\" are negative.",
-  "\u{1F4AC} Shakespeare invented over 1,700 words including \"eyeball\" and \"bedroom\".",
-  "\u{26A1} The dot over a lowercase \"i\" or \"j\" is called a tittle.",
-  "\u{1F9CA} \"Stewardesses\" is the longest word typed with only the left hand.",
-  "\u{1F4A5} \"Underground\" is the only word that begins and ends with \"und\".",
-  "\u{1F30A} \"Queue\" is the only word that sounds the same after removing 4 letters.",
-  "\u{1F3B0} \"Z\" is worth 10 points in Scrabble — tied with \"Q\" for the highest.",
-  "\u{1F409} \"Abstemious\" and \"Facetious\" contain all 5 vowels in order.",
-  "\u{2753} \"Queueing\" is the only English word with 5 consecutive vowels.",
-  "\u{1F3B5} No English word rhymes with \"orange\", \"purple\", \"silver\", or \"month\".",
-  "\u{1F4BE} \"Strengths\" has only one vowel in 9 letters.",
-  "\u{1F9D0} \"Therein\" contains 13 words without rearranging letters (the, he, her, ere, etc.).",
-  "\u{1F3AE} The first Scrabble game was called \"Lexiko\", then \"Criss-Crosswords\".",
-  "\u{1F30E} \"Goodbye\" comes from \"God be with ye\" — a 16th century contraction.",
-  "\u{1F48E} \"Carat\", \"karat\", \"caret\", and \"carrot\" are all pronounced the same.",
-  "\u{2712}\u{FE0F} A sentence using every letter of the alphabet is called a pangram.",
-  "\u{1F4A0} \"Eleven plus two\" is an anagram of \"twelve plus one\".",
-  "\u{1F947} The word \"alphabet\" comes from Greek: alpha + beta.",
-  "\u{1F4D2} \"Aegilops\" (a grass genus) is the longest word with letters in alphabetical order.",
-  "\u{1F3C3} \"Racecar\" is the same word spelled backwards — a palindrome.",
-  "\u{1F4A1} \"Hundred\" is the only number whose letters are in alphabetical order.",
-  "\u{1F9E9} An average person's vocabulary is 20,000–35,000 words.",
-  "\u{1F47B} \"Ghost words\" are words that appear in dictionaries by mistake.",
-  "\u{1F9F2} \"Indivisibility\" has only one vowel used 5 times.",
-  "\u{1F4D5} The word \"set\" takes 60,000 words to define in the Oxford English Dictionary.",
-  "\u{1F389} \"Jinx\" is worth 18 points in Scrabble — one of the highest 4-letter words.",
-  "\u{1F4A3} \"Quizzify\" would score 41 points in Scrabble if it were allowed.",
-  "\u{1F9D9} \"Abracadabra\" originally appeared in a 2nd-century medical text.",
-  "\u{1F4D3} The shortest complete sentence in English is \"I am.\" or even \"Go.\"",
-  "\u{1F30C} \"Astronaut\" means \"star sailor\" in Greek.",
-  "\u{1F3A9} \"Muscle\" comes from Latin \"musculus\" meaning \"little mouse\".",
-  "\u{1F4DD} The most common letter in English is \"E\" — it appears in ~11% of all words.",
-  "\u{1F512} \"Unsplittable\" — only 2% of English words contain all 5 vowels.",
-  "\u{1F41D} The word \"bee\" in spelling bee comes from an Old English word for \"prayer gathering\".",
-  "\u{1F4CE} \"Disambiguation\" has 14 letters and no repeating ones.",
-  "\u{1F4F1} \"Sms\" was added to the dictionary in 2014 — language evolves fast.",
-  "\u{1F30B} \"Volcano\" comes from Vulcan, the Roman god of fire.",
-  "\u{1F4DA} Dr. Seuss wrote \"Green Eggs and Ham\" using only 50 words on a dare.",
-  "\u{1F3C4} \"Honorificabilitudinity\" was used by Shakespeare in Love's Labour's Lost.",
-  "\u{1F4A8} English gains about 1,000 new words every year.",
-  "\u{1F9EE} There are exactly 100 two-letter words legal in Scrabble (English).",
-  "\u{1F3AF} \"Oxyphenbutazone\" is often cited as the highest-scoring Scrabble word at 1,778 pts.",
-  "\u{1F4D0} A \"logophile\" is a person who loves words.",
-  "\u{1F4CC} \"Cwm\" and \"crwth\" are English words borrowed from Welsh — no vowels needed.",
-  "\u{1F40E} \"Hippopotomonstrosesquippedaliophobia\" ironically means fear of long words.",
-  "\u{1F3F0} \"Floccinaucinihilipilification\" means estimating something as worthless — at 29 letters.",
-  "\u{1F52D} \"Supercalifragilisticexpialidocious\" is 34 letters but not in most dictionaries.",
-  "\u{1F95C} \"Peanut\" is neither a pea nor a nut — it's a legume.",
-  "\u{1F4E1} \"Wifi\" doesn't actually stand for \"wireless fidelity\".",
-  "\u{1F9EC} \"CRISPR\" is an anagram of \"CRISP\" with an extra R — fitting for gene editing.",
-  "\u{1F3B2} The chances of getting a blank tile in Scrabble: 2 out of 100 tiles.",
-  "\u{1F4D6} \"OK\" is the most widely understood word across all languages.",
-  "\u{1F30D} \"Mama\" and \"Papa\" sound similar in nearly every language on earth.",
-  "\u{1F4A1} \"Nerd\" was first used by Dr. Seuss in \"If I Ran the Zoo\" (1950).",
-  "\u{1F3AE} In competitive Scrabble, top players memorize 180,000+ words.",
-  "\u{1F52E} An anagram of \"listen\" is \"silent\".",
-  "\u{1F4E6} An anagram of \"astronomer\" is \"moon starer\".",
-  "\u{1F334} An anagram of \"dormitory\" is \"dirty room\".",
-  "\u{1F5BC}\u{FE0F} An anagram of \"the eyes\" is \"they see\".",
-  "\u{1F4DA} An anagram of \"a decimal point\" is \"I'm a dot in place\".",
-  "\u{1F9D1}\u{200D}\u{1F3EB} The word \"teacher\" is an anagram of \"cheater\".",
-  "\u{1F37D}\u{FE0F} An anagram of \"slot machines\" is \"cash lost in me\".",
-  "\u{1F3B5} An anagram of \"Elvis\" is \"lives\".",
-  "\u{1F30A} An anagram of \"the Morse code\" is \"here come dots\".",
-  "\u{1F3AD} An anagram of \"William Shakespeare\" is \"I am a weakish speller\".",
-  "\u{1F4AC} English is the only major language that doesn't have a governing body.",
-  "\u{1F47E} The word \"robot\" comes from Czech \"robota\" meaning \"forced labor\".",
-  "\u{1F4F0} \"Uncopyrightable\" at 15 letters is the longest common isogram.",
-  "\u{1F4A0} \"Forty\" is the only number spelled with letters in alphabetical order.",
-  "\u{1F95A} \"Eggcorn\" is when you mishear a phrase — like \"for all intensive purposes\".",
-  "\u{1F33F} \"Defenestration\" means throwing someone out of a window. There's a word for that."
-];
-
 var FOOTER_VIBES = ["\u{1F331}","\u{2728}","\u{1F3B2}","\u{1F9E9}","\u{1F47E}","\u{1F419}","\u{1F308}","\u{1F680}","\u{1FAB4}","\u{1F9CA}"];
+
+var DEFAULT_FUN_FACT = "\u{1F4A1} Words are fun when shared with friends.";
+
+function loadFunFact() {
+  var factEl = document.getElementById("welcomeFunFact");
+  if (!factEl) return;
+
+  fetch("/api/funfact")
+    .then(function(res) {
+      if (!res.ok) throw new Error("fun fact request failed");
+      return res.json();
+    })
+    .then(function(data) {
+      if (data && typeof data.fact === "string" && data.fact.trim()) {
+        factEl.textContent = data.fact;
+      } else {
+        factEl.textContent = DEFAULT_FUN_FACT;
+      }
+    })
+    .catch(function() {
+      factEl.textContent = DEFAULT_FUN_FACT;
+    });
+}
 
 (function initQuirks() {
   // Fun fact in welcome card
-  var factEl = document.getElementById("welcomeFunFact");
-  if (factEl) factEl.textContent = FUN_FACTS[Math.floor(Math.random() * FUN_FACTS.length)];
+  loadFunFact();
   // Footer vibe emoji
   var vibeEl = document.getElementById("footerVibe");
   if (vibeEl) vibeEl.textContent = FOOTER_VIBES[Math.floor(Math.random() * FOOTER_VIBES.length)];

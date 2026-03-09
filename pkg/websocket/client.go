@@ -118,12 +118,21 @@ func (c *Client) Read() {
 		message := Message{Type: messageType, Body: data}
 		c.Pool.Broadcast <- message
 
-		if strings.EqualFold(strings.TrimSpace(data.Text), "JUMBLE") {
-			if round, started := c.Pool.StartGame(defaultGameDuration, data.Name); started {
+		parts := strings.Fields(strings.TrimSpace(data.Text))
+		if len(parts) > 0 && strings.EqualFold(parts[0], "JUMBLE") {
+			duration := c.Pool.RoundDuration()
+			if len(parts) > 1 {
+				select {
+				case c.Send <- MessageData{Name: "Jumble", Text: "Round duration is set by the room creator (" + formatRoundDuration(duration) + "). Type JUMBLE to start."}:
+				default:
+				}
+			}
+
+			if round, started := c.Pool.StartGame(duration, data.Name); started {
 				letters := spacedLetters(round.Letters)
 				c.Pool.Broadcast <- Message{
 					Type: websocket.TextMessage,
-					Body: MessageData{Name: "Jumble", Text: "Game started.\nRound ends in 1 minute.", Scores: round.Scores, Letters: letters, RoundState: roundStateActive},
+					Body: MessageData{Name: "Jumble", Text: "Game started.\nRound ends in " + formatRoundDuration(duration) + ".", Scores: round.Scores, Letters: letters, RoundState: roundStateActive},
 				}
 				c.Pool.Broadcast <- Message{
 					Type: websocket.TextMessage,

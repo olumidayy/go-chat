@@ -34,6 +34,7 @@ type Pool struct {
 	playerScores   map[string]int
 	playerWords    map[string]int
 	gameTimer      *time.Timer
+	roundDuration  time.Duration
 	activeNames    map[string]bool
 	onEmpty        func() // called when last client leaves
 }
@@ -51,8 +52,27 @@ func NewPool() *Pool {
 		dictionary:    buildWordSet(words),
 		letterSources: buildLetterSources(words),
 		GameInSession: false,
+		roundDuration: defaultGameDuration,
 		activeNames:   make(map[string]bool),
 	}
+}
+
+func (pool *Pool) SetRoundDuration(duration time.Duration) {
+	pool.mu.Lock()
+	defer pool.mu.Unlock()
+
+	pool.roundDuration = normalizeRoundDuration(duration)
+}
+
+func (pool *Pool) RoundDuration() time.Duration {
+	pool.mu.RLock()
+	defer pool.mu.RUnlock()
+
+	if pool.roundDuration <= 0 {
+		return defaultGameDuration
+	}
+
+	return pool.roundDuration
 }
 
 // Stop signals the Start goroutine to exit.

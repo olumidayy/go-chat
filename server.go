@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -169,11 +171,16 @@ func serveWs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	roomCode := strings.TrimSpace(r.URL.Query().Get("room"))
+	roomCode := websocket.NormalizeRoomCode(r.URL.Query().Get("room"))
 	name := sanitizeName(r.URL.Query().Get("name"))
 
 	if roomCode == "" || name == "" {
 		http.Error(w, "room and name are required", http.StatusBadRequest)
+		return
+	}
+
+	if !websocket.IsValidRoomCode(roomCode) {
+		http.Error(w, "invalid room code", http.StatusBadRequest)
 		return
 	}
 
@@ -211,6 +218,11 @@ func serveWs(w http.ResponseWriter, r *http.Request) {
 	client.Read()
 }
 
+type createRoomRequest struct {
+	DurationSeconds int    `json:"durationSeconds"`
+	RoomCode        string `json:"roomCode"`
+}
+
 func handleCreateRoom(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -228,7 +240,63 @@ func handleCreateRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	code, _ := rm.CreateRoom()
+	duration := websocket.DefaultRoundDuration
+	requestedRoomCode := ""
+	if r.Body != nil {
+		defer r.Body.Close()
+
+		var req createRoomRequest
+		decoder := json.NewDecoder(io.LimitReader(r.Body, 2048))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&req); err != nil {
+			if err != io.EOF {
+				http.Error(w, "invalid request body", http.StatusBadRequest)
+				return
+			}
+		} else {
+			duration = time.Duration(req.DurationSeconds) * time.Second
+			if req.DurationSeconds == 0 {
+				duration = websocket.DefaultRoundDuration
+			}
+
+			requestedRoomCode = websocket.NormalizeRoomCode(req.RoomCode)
+			if requestedRoomCode != "" && !websocket.IsValidRoomCode(requestedRoomCode) {
+				http.Error(w, "room code must be 5-10 letters or numbers", http.StatusBadRequest)
+				return
+			}
+
+			if duration < websocket.MinRoundDuration || duration > websocket.MaxRoundDuration {
+				http.Error(w, "round duration must be between 30 and 120 seconds", http.StatusBadRequest)
+				return
+			}
+
+			var extra json.RawMessage
+			if err := decoder.Decode(&extra); err != io.EOF {
+				http.Error(w, "invalid request body", http.StatusBadRequest)
+				return
+			}
+		}
+	}
+
+	var code string
+	if requestedRoomCode == "" {
+		code, _ = rm.CreateRoomWithDuration(duration)
+	} else {
+		var err error
+		code, _, err = rm.CreateRoomWithCode(requestedRoomCode, duration)
+		if err != nil {
+			switch {
+			case errors.Is(err, websocket.ErrInvalidRoomCode):
+				http.Error(w, "room code must be 5-10 letters or numbers", http.StatusBadRequest)
+			case errors.Is(err, websocket.ErrRoomCodeTaken):
+				http.Error(w, "room code already exists", http.StatusConflict)
+			default:
+				http.Error(w, "failed to create room", http.StatusInternalServerError)
+			}
+			return
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(map[string]string{"code": code}); err != nil {
 		log.Println("encode error:", err)
@@ -247,10 +315,10 @@ func handleGetRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Path: /api/rooms/XXXXXX
+	// Path: /api/rooms/{ROOM_CODE}
 	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/rooms/"), "/")
-	code := strings.TrimSpace(parts[0])
-	if code == "" || len(code) != 6 {
+	code := websocket.NormalizeRoomCode(parts[0])
+	if !websocket.IsValidRoomCode(code) {
 		http.Error(w, "invalid room code", http.StatusBadRequest)
 		return
 	}
@@ -263,7 +331,7 @@ func handleGetRoom(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(websocket.RoomInfo{
-		Code:    strings.ToUpper(code),
+		Code:    code,
 		Players: pool.ClientCount(),
 	}); err != nil {
 		log.Println("encode error:", err)
@@ -276,6 +344,8 @@ func setupRoutes() {
 	http.HandleFunc("/ws", serveWs)
 	http.HandleFunc("/api/rooms/create", securityHeaders(handleCreateRoom))
 	http.HandleFunc("/api/rooms/", securityHeaders(handleGetRoom))
+	http.HandleFunc("/api/funfact", securityHeaders(handleFunFact))
+	http.HandleFunc("/api/emojis", securityHeaders(handleEmojiOptions))
 
 	http.HandleFunc("/favicon.svg", securityHeaders(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "public, max-age=86400")

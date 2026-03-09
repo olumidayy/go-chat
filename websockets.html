@@ -11,8 +11,35 @@
 </head>
 <body>
 
+<!-- First-time landing overlay -->
+<div class="landing-overlay" id="landingOverlay">
+  <div class="landing-card">
+    <div class="landing-badge">&#127918; Multiplayer Word Battle</div>
+    <h1 class="landing-title">Welcome to Jumble</h1>
+    <p class="landing-sub">Race your friends to build valid words from a shared letter bank before the timer runs out.</p>
+    <div class="landing-features">
+      <div class="landing-feature">
+        <span class="landing-feature-icon">&#9201;</span>
+        <span>1 minute rounds</span>
+      </div>
+      <div class="landing-feature">
+        <span class="landing-feature-icon">&#127942;</span>
+        <span>Scrabble scoring</span>
+      </div>
+      <div class="landing-feature">
+        <span class="landing-feature-icon">&#128640;</span>
+        <span>Instant multiplayer</span>
+      </div>
+    </div>
+    <button type="button" class="name-btn landing-start-btn" id="landingStartBtn">
+      <span>Start Playing</span>
+      <span class="name-btn-arrow">&#10132;</span>
+    </button>
+  </div>
+</div>
+
 <!-- Name entry overlay -->
-<div class="name-overlay" id="nameOverlay">
+<div class="name-overlay" id="nameOverlay" style="display:none">
   <form class="name-card" id="nameForm">
     <div class="name-card-icon">&#9827;</div>
     <h1 class="name-card-title">Jumble</h1>
@@ -1097,6 +1124,102 @@ kbd {
 }
 
 /* ============================================================
+   LANDING OVERLAY
+   ============================================================ */
+.landing-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  transition: opacity .35s, transform .35s;
+}
+
+.landing-overlay.leaving {
+  opacity: 0;
+  transform: scale(1.02);
+  pointer-events: none;
+}
+
+.landing-card {
+  width: min(560px, 92vw);
+  border-radius: 26px;
+  background: linear-gradient(165deg, var(--surface), var(--surface-2));
+  border: 1px solid var(--border);
+  box-shadow: 0 24px 80px rgba(0,0,0,.35);
+  padding: 44px 38px 34px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  text-align: center;
+  animation: cardIn .5s cubic-bezier(.34,1.56,.64,1) both;
+}
+
+.landing-badge {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-3);
+  color: var(--text-dim);
+  font-size: 0.78em;
+  font-weight: 600;
+  letter-spacing: .03em;
+}
+
+.landing-title {
+  font-size: clamp(2em, 5.4vw, 2.8em);
+  font-weight: 700;
+  line-height: 1.05;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-top: 2px;
+}
+
+.landing-sub {
+  color: var(--text-dim);
+  font-size: 0.98em;
+  line-height: 1.7;
+  max-width: 46ch;
+}
+
+.landing-features {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.landing-feature {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  border-radius: 12px;
+  padding: 10px 8px;
+  color: var(--text);
+  font-size: 0.82em;
+  font-weight: 500;
+}
+
+.landing-feature-icon {
+  font-size: 1.25em;
+}
+
+.landing-start-btn {
+  margin-top: 6px;
+  max-width: 280px;
+}
+
+/* ============================================================
    NAME ENTRY OVERLAY
    ============================================================ */
 .name-overlay {
@@ -1740,6 +1863,24 @@ kbd {
    RESPONSIVE
    ============================================================ */
 @media (max-width: 768px) {
+  .landing-card {
+    padding: 34px 20px 24px;
+    gap: 14px;
+    border-radius: 20px;
+  }
+  .landing-sub {
+    font-size: 0.9em;
+  }
+  .landing-features {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .landing-feature {
+    flex-direction: row;
+    justify-content: center;
+    gap: 8px;
+    font-size: 0.84em;
+  }
   .app { flex-direction: column }
   .sidebar {
     width: 100%;
@@ -1829,6 +1970,8 @@ function nameInitials(name) {
 var PERSON_NAME = "";
 var socket = null;
 var statusEl = document.getElementById("connectionStatus");
+var landingOverlay = document.getElementById("landingOverlay");
+var landingStartBtn = document.getElementById("landingStartBtn");
 var nameOverlay = document.getElementById("nameOverlay");
 var nameForm    = document.getElementById("nameForm");
 var nameInput   = document.getElementById("nameInput");
@@ -1844,10 +1987,35 @@ function isValidDisplayName(val) {
   return count >= 2 && count <= 24 && namePattern.test(val);
 }
 
-// Restore saved name
+function showNameOverlay() {
+  nameOverlay.style.display = "flex";
+  nameOverlay.classList.remove("leaving");
+  setTimeout(function() { nameInput.focus(); }, 0);
+}
+
+landingStartBtn.addEventListener("click", function() {
+  landingOverlay.classList.add("leaving");
+  setTimeout(function() {
+    landingOverlay.style.display = "none";
+    showNameOverlay();
+  }, 320);
+});
+
+// Initial entry flow
 (function() {
   var saved = null;
   try { saved = localStorage.getItem("jumble-name"); } catch(e) {}
+  var params = new URLSearchParams(window.location.search);
+  var hasRoomParam = !!params.get("room");
+
+  if (hasRoomParam) {
+    landingOverlay.style.display = "none";
+    showNameOverlay();
+  } else {
+    landingOverlay.style.display = "flex";
+    nameOverlay.style.display = "none";
+  }
+
   if (saved) {
     nameInput.value = saved;
     updateNamePreview();

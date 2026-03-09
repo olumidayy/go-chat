@@ -243,7 +243,11 @@ func handleCreateRoom(w http.ResponseWriter, r *http.Request) {
 	duration := websocket.DefaultRoundDuration
 	requestedRoomCode := ""
 	if r.Body != nil {
-		defer r.Body.Close()
+		defer func() {
+			if err := r.Body.Close(); err != nil {
+				log.Printf("request body close error: %v", err)
+			}
+		}()
 
 		var req createRoomRequest
 		decoder := json.NewDecoder(io.LimitReader(r.Body, 2048))
